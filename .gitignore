@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+
+# Authentication & Sensitive Data
+data/auth_info.json
+data/browser_state/
+*.session
+*.cookies
+
+# Cache
+data/ocr_cache/
+*.cache
+.cache/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test output
+test_results.txt
+*.tmp
+.env
+
+# Keep directory structure
+!data/.gitkeep
+!data/ocr_cache/.gitkeep

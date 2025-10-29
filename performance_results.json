@@ -1,0 +1,47 @@
+{
+  "startup_time": {
+    "elapsed": 0.040920257568359375,
+    "status": "FAILED",
+    "error": "No module named 'patchright'",
+    "passed": false
+  },
+  "memory_baseline": {
+    "rss_mb": 25.26171875,
+    "vms_mb": 16.2265625,
+    "threshold_mb": 500,
+    "passed": true
+  },
+  "file_io": {
+    "write_time": 0.033823490142822266,
+    "read_time": 0.02019190788269043,
+    "write_throughput_mbps": 295.65251716408443,
+    "read_throughput_mbps": 495.2479011937514,
+    "passed": true
+  },
+  "directory_scan": {
+    "elapsed": 0.00026798248291015625,
+    "file_count": 2,
+    "files_per_sec": 7463.174377224199,
+    "passed": true
+  },
+  "json_operations": {
+    "serialize_time": 3.838539123535156e-05,
+    "deserialize_time": 3.981590270996094e-05,
+    "data_size_kb": 13.4287109375,
+    "passed": true
+  },
+  "disk_space": {
+    "total_gb": 1887.7109336853027,
+    "used_gb": 423.9090156555176,
+    "free_gb": 1463.8019180297852,
+    "percent_used": 22.5,
+    "threshold_free_gb": 10,
+    "passed": true
+  },
+  "cpu_info": {
+    "logical_cores": 24,
+    "physical_cores": 16,
+    "cpu_percent": 4.0,
+    "passed": true
+  }
+}
