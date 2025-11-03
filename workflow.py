@@ -430,6 +430,18 @@ async def main():
         print(f"Ticket Folder: {result['ticket_folder']}")
         print(f"Confidence: {result['confidence']:.2f}")
         print(f"Extraction Method: {result['extraction_method']}")
+
+        # Alert if confidence is below threshold
+        if result['confidence'] < 0.70:
+            print("\n" + "="*80)
+            print("[!] WARNING: Low Confidence Extraction (< 0.70)")
+            print("[!] Manual verification STRONGLY recommended")
+            print(f"[!] Confidence Score: {result['confidence']:.2f}")
+            print("[!] Review: processing/{}/preliminary_analysis.md".format(
+                Path(result['ticket_folder']).name
+            ))
+            print("="*80 + "\n")
+
         sys.exit(0)
     else:
         print(f"\n[FAILED] Phase 0 Failed")
