@@ -22,10 +22,10 @@ class OCRProcessor:
         self.cache_dir.mkdir(exist_ok=True, parents=True)
 
         # Initialize PaddleOCR (English only)
+        # Note: show_log parameter removed for compatibility with current PaddleOCR version
         self.ocr = PaddleOCR(
             use_angle_cls=True,
-            lang='en',
-            show_log=False
+            lang='en'
         )
 
     def extract_text(self, file_path, preprocess=True):
@@ -69,13 +69,22 @@ class OCRProcessor:
             all_results = []
 
             for img_path in images:
-                if preprocess:
-                    img_path = self._preprocess_image(img_path)
+                try:
+                    if preprocess:
+                        img_path = self._preprocess_image(img_path)
 
-                result = self.ocr.ocr(img_path, cls=True)
-                text = self._parse_ocr_result(result)
-                all_text.append(text)
-                all_results.append(result)
+                    # Note: cls parameter removed for compatibility with current PaddleOCR version
+                    result = self.ocr.ocr(img_path)
+
+                    if result:
+                        text = self._parse_ocr_result(result)
+                        all_text.append(text)
+                        all_results.append(result)
+                    else:
+                        print(f"[!] No OCR result for {img_path}")
+                except Exception as e:
+                    print(f"[!] Error processing image {img_path}: {e}")
+                    raise
 
             # Combine results
             combined_text = "\n\n".join(all_text)
@@ -93,9 +102,12 @@ class OCRProcessor:
                 }
             }
         except Exception as e:
+            import traceback
+            error_detail = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+            print(f"[!] OCR Error Details:\n{error_detail}")
             return {
                 "success": False,
-                "error": str(e),
+                "error": error_detail,
                 "confidence": 0.0,
                 "text": "",
                 "structured_data": [],
@@ -139,45 +151,68 @@ class OCRProcessor:
         - Denoise
         - Binarize
         """
-        img = cv2.imread(str(img_path))
+        try:
+            img = cv2.imread(str(img_path))
 
-        if img is None:
-            print(f"[!] Could not read image: {img_path}")
+            if img is None:
+                print(f"[!] Could not read image: {img_path}")
+                return str(img_path)
+
+            # Convert to grayscale
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+
+            # Denoise
+            denoised = cv2.fastNlMeansDenoising(enhanced)
+
+            # Binarize (Otsu's method)
+            _, binary = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+            # Upscale if needed (< 300 DPI equivalent)
+            h, w = binary.shape
+            if h < 1000 or w < 1000:
+                scale = 2.0
+                binary = cv2.resize(binary, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+            # Save preprocessed image
+            processed_path = self.cache_dir / f"processed_{Path(img_path).name}"
+            success = cv2.imwrite(str(processed_path), binary)
+
+            if not success:
+                print(f"[!] Failed to write preprocessed image: {processed_path}")
+                return str(img_path)
+
+            return str(processed_path)
+        except Exception as e:
+            print(f"[!] Preprocessing error: {e}. Using original image.")
             return str(img_path)
-
-        # Convert to grayscale
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(gray)
-
-        # Denoise
-        denoised = cv2.fastNlMeansDenoising(enhanced)
-
-        # Binarize (Otsu's method)
-        _, binary = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        # Upscale if needed (< 300 DPI equivalent)
-        h, w = binary.shape
-        if h < 1000 or w < 1000:
-            scale = 2.0
-            binary = cv2.resize(binary, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-
-        # Save preprocessed image
-        processed_path = self.cache_dir / f"processed_{Path(img_path).name}"
-        cv2.imwrite(str(processed_path), binary)
-
-        return str(processed_path)
 
     def _parse_ocr_result(self, result):
         """Parse PaddleOCR result into plain text"""
-        if not result or not result[0]:
+        if not result:
             return ""
 
         text_lines = []
-        for line in result[0]:
-            text_lines.append(line[1][0])  # Extract text from structure
+        try:
+            # PaddleOCR (PaddleX) returns OCRResult objects
+            for page in result:
+                if page:
+                    # Check if it's an OCRResult object with 'rec_texts' attribute
+                    if hasattr(page, 'str') and isinstance(page.str, dict):
+                        # PaddleX OCRResult structure
+                        rec_texts = page.str.get('res', {}).get('rec_texts', [])
+                        text_lines.extend(rec_texts)
+                    elif isinstance(page, list):
+                        # Legacy structure: list of [bbox, (text, conf)]
+                        for line in page:
+                            if line and len(line) >= 2:
+                                text_lines.append(line[1][0])
+        except (IndexError, TypeError, KeyError) as e:
+            print(f"[!] OCR parse warning: {e}")
+            return ""
 
         return "\n".join(text_lines)
 
@@ -192,12 +227,38 @@ class OCRProcessor:
         total_conf = 0.0
         count = 0
 
-        for page_result in results:
-            if page_result and page_result[0]:
-                for line in page_result[0]:
-                    conf = line[1][1]  # Confidence score
-                    total_conf += conf
-                    count += 1
+        try:
+            for page_result in results:
+                if page_result:
+                    # Check if it's a PaddleX OCRResult object (has 'str' attribute)
+                    if hasattr(page_result, 'str'):
+                        # PaddleX OCRResult structure
+                        res_dict = page_result.str
+                        if isinstance(res_dict, dict):
+                            rec_scores = res_dict.get('res', {}).get('rec_scores')
+                            if rec_scores is not None and len(rec_scores) > 0:
+                                # Handle numpy array
+                                import numpy as np
+                                if isinstance(rec_scores, np.ndarray):
+                                    total_conf += float(np.sum(rec_scores))
+                                    count += len(rec_scores)
+                                else:
+                                    total_conf += sum(rec_scores)
+                                    count += len(rec_scores)
+                    elif isinstance(page_result, list):
+                        # Legacy structure: list of [bbox, (text, conf)]
+                        for line in page_result:
+                            if line and isinstance(line, (list, tuple)) and len(line) >= 2:
+                                # line[1] should be tuple (text, conf)
+                                if isinstance(line[1], (list, tuple)) and len(line[1]) >= 2:
+                                    conf = line[1][1]  # Confidence score
+                                    total_conf += conf
+                                    count += 1
+        except (IndexError, TypeError, KeyError) as e:
+            import traceback
+            print(f"[!] Confidence calculation warning: {e}")
+            print(f"[!] Traceback: {traceback.format_exc()}")
+            return 0.0
 
         return total_conf / count if count > 0 else 0.0
 
